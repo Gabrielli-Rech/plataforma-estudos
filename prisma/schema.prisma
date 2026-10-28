@@ -1,0 +1,195 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum Rarity {
+  COMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+enum FriendStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+model User {
+  id             Int       @id @default(autoincrement())
+  name           String
+  username       String    @unique
+  email          String    @unique
+  passwordHash   String
+  xp             Int       @default(0)
+  currentStreak  Int       @default(0)
+  longestStreak  Int       @default(0)
+  streakFreezes  Int       @default(0)
+  lastStudyDate  DateTime? @db.Date
+  profilePublic  Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  subjects         Subject[]
+  sessions         StudySession[]
+  goals            WeeklyGoal[]
+  progress         TopicProgress[]
+  achievements     UserAchievement[]
+  sentRequests     Friendship[]      @relation("Requester")
+  receivedRequests Friendship[]      @relation("Addressee")
+}
+
+model Subject {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  name      String
+  color     String   @default("#6366f1")
+  createdAt DateTime @default(now())
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exams    Exam[]
+  topics   Topic[]
+  sessions StudySession[]
+  goals    WeeklyGoal[]
+
+  @@index([userId])
+}
+
+model Exam {
+  id        Int      @id @default(autoincrement())
+  subjectId Int
+  title     String
+  examDate  DateTime @db.Date
+  grade     Float?
+  weight    Float?   @default(1.0)
+  createdAt DateTime @default(now())
+
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@index([subjectId])
+  @@index([examDate])
+}
+
+model Topic {
+  id        Int      @id @default(autoincrement())
+  subjectId Int
+  name      String
+  posX      Float    @default(0)
+  posY      Float    @default(0)
+  createdAt DateTime @default(now())
+
+  subject    Subject           @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  dependsOn  TopicDependency[] @relation("TopicDeps")
+  requiredBy TopicDependency[] @relation("RequiredBy")
+  progress   TopicProgress[]
+  sessions   StudySession[]
+
+  @@index([subjectId])
+}
+
+model TopicDependency {
+  topicId    Int
+  requiresId Int
+
+  topic    Topic @relation("TopicDeps", fields: [topicId], references: [id], onDelete: Cascade)
+  requires Topic @relation("RequiredBy", fields: [requiresId], references: [id], onDelete: Cascade)
+
+  @@id([topicId, requiresId])
+  @@index([requiresId])
+}
+
+model TopicProgress {
+  userId      Int
+  topicId     Int
+  status      ProgressStatus @default(NOT_STARTED)
+  completedAt DateTime?
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@id([userId, topicId])
+  @@index([topicId])
+}
+
+model StudySession {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  subjectId Int
+  topicId   Int?
+  startedAt DateTime @default(now())
+  minutes   Int
+  xpEarned  Int      @default(0)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  topic   Topic?  @relation(fields: [topicId], references: [id], onDelete: SetNull)
+
+  @@index([userId, startedAt])
+  @@index([subjectId])
+  @@index([topicId])
+}
+
+model WeeklyGoal {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  subjectId     Int?
+  weekStart     DateTime @db.Date
+  targetMinutes Int
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, subjectId, weekStart])
+  @@index([userId, weekStart])
+  @@index([subjectId])
+}
+
+model Achievement {
+  id          Int    @id @default(autoincrement())
+  code        String @unique
+  name        String
+  description String
+  icon        String
+  xpReward    Int    @default(50)
+  rarity      Rarity @default(COMMON)
+
+  users UserAchievement[]
+}
+
+model UserAchievement {
+  userId        Int
+  achievementId Int
+  earnedAt      DateTime @default(now())
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@id([userId, achievementId])
+  @@index([achievementId])
+}
+
+model Friendship {
+  id          Int          @id @default(autoincrement())
+  requesterId Int
+  addresseeId Int
+  status      FriendStatus @default(PENDING)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  requester User @relation("Requester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee User @relation("Addressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId])
+}
